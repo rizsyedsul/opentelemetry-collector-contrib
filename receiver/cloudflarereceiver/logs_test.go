@@ -478,6 +478,64 @@ func TestEmptyAttributes(t *testing.T) {
 	}
 }
 
+func TestArrayFields(t *testing.T) {
+	now := time.Time{}
+
+	payload := `{ "BotDetectionIDs": [1,2,3], "SecurityActions": ["block", "allow"], "EdgeStartTimestamp": "2023-03-03T05:29:05Z", "EdgeResponseStatus": 200 }`
+
+	recv := newReceiver(t, &Config{
+		Logs: LogsConfig{
+			Endpoint:           "localhost:0",
+			TLS:                &configtls.ServerConfig{},
+			MaxRequestBodySize: 1024,
+			TimestampField:     "EdgeStartTimestamp",
+			Attributes:         nil,
+			Separator:          ".",
+		},
+	},
+		&consumertest.LogsSink{},
+	)
+	var logs plog.Logs
+	rawLogs, err := parsePayload([]byte(payload))
+	require.NoError(t, err)
+	logs = recv.processLogs(pcommon.NewTimestampFromTime(time.Now()), rawLogs)
+	require.NotNil(t, logs)
+
+	// Check that the log record has the array attributes
+	require.Equal(t, 1, logs.ResourceLogs().Len())
+	rl := logs.ResourceLogs().At(0)
+	require.Equal(t, 1, rl.ScopeLogs().Len())
+	sl := rl.ScopeLogs().At(0)
+	require.Equal(t, 1, sl.LogRecords().Len())
+	lr := sl.LogRecords().At(0)
+
+	// Check BotDetectionIDs
+	botVal, ok := lr.Attributes().Get("BotDetectionIDs")
+	require.True(t, ok)
+	botSlice := botVal.Slice()
+	require.Equal(t, 3, botSlice.Len())
+	require.Equal(t, int64(1), botSlice.At(0).Int())
+	require.Equal(t, int64(2), botSlice.At(1).Int())
+	require.Equal(t, int64(3), botSlice.At(2).Int())
+
+	// Check SecurityActions
+	secVal, ok := lr.Attributes().Get("SecurityActions")
+	require.True(t, ok)
+	secSlice := secVal.Slice()
+	require.Equal(t, 2, secSlice.Len())
+	require.Equal(t, "block", secSlice.At(0).Str())
+	require.Equal(t, "allow", secSlice.At(1).Str())
+
+	// Check other fields
+	tsVal, ok := lr.Attributes().Get("EdgeStartTimestamp")
+	require.True(t, ok)
+	require.Equal(t, "2023-03-03T05:29:05Z", tsVal.Str())
+
+	statusVal, ok := lr.Attributes().Get("EdgeResponseStatus")
+	require.True(t, ok)
+	require.Equal(t, int64(200), statusVal.Int())
+}
+
 func TestAttributesWithSeparator(t *testing.T) {
 	now := time.Time{}
 

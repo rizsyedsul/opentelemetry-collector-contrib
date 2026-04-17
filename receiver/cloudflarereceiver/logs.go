@@ -361,6 +361,35 @@ func (l *logsReceiver) processLogs(now pcommon.Timestamp, logs []map[string]any)
 					attrs.PutDouble(attrName, v)
 				case bool:
 					attrs.PutBool(attrName, v)
+				case []interface{}:
+					if len(v) == 0 {
+						continue
+					}
+					first := v[0]
+					switch first.(type) {
+					case string:
+						slice := attrs.PutEmptySlice(attrName)
+						for _, elem := range v {
+							if s, ok := elem.(string); ok {
+								slice.AppendEmpty().SetStr(s)
+							} else {
+								l.logger.Warn("mixed types in string array", zap.String("field", field))
+								break
+							}
+						}
+					case float64:
+						slice := attrs.PutEmptySlice(attrName)
+						for _, elem := range v {
+							if f, ok := elem.(float64); ok {
+								slice.AppendEmpty().SetInt(int64(f))
+							} else {
+								l.logger.Warn("mixed types in int array", zap.String("field", field))
+								break
+							}
+						}
+					default:
+						l.logger.Warn("unsupported array element type", zap.String("field", field), zap.String("type", fmt.Sprintf("%T", first)))
+					}
 				case map[string]any:
 					// Flatten the map and add each field with a prefixed key
 					flattened := make(map[string]any)
@@ -377,6 +406,35 @@ func (l *logsReceiver) processLogs(now pcommon.Timestamp, logs []map[string]any)
 							attrs.PutDouble(k, v)
 						case bool:
 							attrs.PutBool(k, v)
+						case []interface{}:
+							if len(v) == 0 {
+								continue
+							}
+							first := v[0]
+							switch first.(type) {
+							case string:
+								slice := attrs.PutEmptySlice(k)
+								for _, elem := range v {
+									if s, ok := elem.(string); ok {
+										slice.AppendEmpty().SetStr(s)
+									} else {
+										l.logger.Warn("mixed types in string array", zap.String("field", k))
+										break
+									}
+								}
+							case float64:
+								slice := attrs.PutEmptySlice(k)
+								for _, elem := range v {
+									if f, ok := elem.(float64); ok {
+										slice.AppendEmpty().SetInt(int64(f))
+									} else {
+										l.logger.Warn("mixed types in int array", zap.String("field", k))
+										break
+									}
+								}
+							default:
+								l.logger.Warn("unsupported array element type", zap.String("field", k), zap.String("type", fmt.Sprintf("%T", first)))
+							}
 						default:
 							l.logger.Warn("unable to translate flattened field to attribute, unsupported type",
 								zap.String("field", k),
